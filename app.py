@@ -1,14 +1,11 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.pagesizes import A4
-import io
 
 # -----------------------------------------------------------------------------
-# PAGE CONFIG
+# PAGE CONFIGURATION
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="Diabetes Prediction System",
@@ -17,33 +14,45 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------------------------
-# CSS
+# CUSTOM CSS
 # -----------------------------------------------------------------------------
 st.markdown("""
 <style>
+.main {
+    background-color: #f8f9fa;
+}
 .stButton>button {
     width: 100%;
     background-color: #4CAF50;
     color: white;
     border-radius: 8px;
-    height: 45px;
+    height: 50px;
     font-weight: bold;
+}
+.stButton>button:hover {
+    background-color: #45a049;
+}
+.result-card {
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    margin-top: 20px;
 }
 .result-positive {
     background-color: #ffebee;
-    padding: 20px;
-    border-radius: 10px;
+    color: #c62828;
+    border: 1px solid #ef9a9a;
 }
 .result-negative {
     background-color: #e8f5e9;
-    padding: 20px;
-    border-radius: 10px;
+    color: #2e7d32;
+    border: 1px solid #a5d6a7;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# SESSION STATE
+# SESSION STATE (History)
 # -----------------------------------------------------------------------------
 if "history" not in st.session_state:
     st.session_state.history = []
@@ -54,8 +63,8 @@ if "history" not in st.session_state:
 @st.cache_data
 def load_data():
     url = "https://raw.githubusercontent.com/jbrownlee/Datasets/master/pima-indians-diabetes.data.csv"
-    cols = ['preg','plas','pres','skin','insu','mass','pedi','age','class']
-    df = pd.read_csv(url, names=cols)
+    columns = ['preg', 'plas', 'pres', 'skin', 'insu', 'mass', 'pedi', 'age', 'class']
+    df = pd.read_csv(url, names=columns)
     df['class'] = df['class'].map({1: 'tested_positive', 0: 'tested_negative'})
     return df
 
@@ -66,7 +75,7 @@ df = load_data()
 # -----------------------------------------------------------------------------
 @st.cache_resource
 def train_model(data):
-    X = data[['age','mass','insu','plas']]
+    X = data[['age', 'mass', 'insu', 'plas']]
     y = data['class']
     model = LogisticRegression(max_iter=1000)
     model.fit(X, y)
@@ -76,125 +85,108 @@ def train_model(data):
 model, accuracy = train_model(df)
 
 # -----------------------------------------------------------------------------
-# SIDEBAR
+# SIDEBAR INPUTS
 # -----------------------------------------------------------------------------
 with st.sidebar:
     st.title("🩺 Patient Details")
 
     age = st.number_input("Age", 1, 120, 25)
     mass = st.number_input("BMI", 0.0, 70.0, 28.0)
-    insulin = st.number_input("Insulin", 0, 900, 80)
+    insulin = st.number_input("Insulin Level", 0, 900, 80)
     plasma = st.number_input("Plasma Glucose", 0, 300, 120)
 
-    predict_btn = st.button("🔍 Predict")
+    predict_btn = st.button("🔍 Analyze Result")
     reset_btn = st.button("🔄 Reset")
 
     if reset_btn:
         st.rerun()
 
 # -----------------------------------------------------------------------------
-# MAIN
+# MAIN UI
 # -----------------------------------------------------------------------------
 st.title("Diabetes Prediction System")
+st.write("Predicts diabetes using **Logistic Regression**.")
 
-if predict_btn:
-    input_df = pd.DataFrame(
-        [[age, mass, insulin, plasma]],
-        columns=['age','mass','insu','plas']
-    )
+col1, col2 = st.columns([2, 1])
 
-    prediction = model.predict(input_df)[0]
-    probability = model.predict_proba(input_df)
-
-    st.session_state.history.append({
-        "Age": age,
-        "BMI": mass,
-        "Insulin": insulin,
-        "Glucose": plasma,
-        "Result": prediction
-    })
-
-    # RESULT DISPLAY
-    if prediction == "tested_positive":
-        st.markdown(
-            f"<div class='result-positive'><h2>Tested Positive</h2><h3>{probability[0][1]*100:.2f}%</h3></div>",
-            unsafe_allow_html=True
+with col1:
+    if predict_btn:
+        input_df = pd.DataFrame(
+            [[age, mass, insulin, plasma]],
+            columns=['age', 'mass', 'insu', 'plas']
         )
-        st.warning("⚠️ Consult a doctor")
+
+        prediction = model.predict(input_df)[0]
+        probability = model.predict_proba(input_df)
+
+        # Save history
+        st.session_state.history.append({
+            "Age": age,
+            "BMI": mass,
+            "Insulin": insulin,
+            "Glucose": plasma,
+            "Result": prediction
+        })
+
+        # Display result
+        if prediction == "tested_positive":
+            score = probability[0][1] * 100
+            st.markdown(f"""
+            <div class="result-card result-positive">
+                <h2>Tested Positive</h2>
+                <h1>{score:.2f}%</h1>
+                <p>High risk of diabetes</p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.warning("⚠️ Please consult a doctor.")
+        else:
+            score = probability[0][0] * 100
+            st.markdown(f"""
+            <div class="result-card result-negative">
+                <h2>Tested Negative</h2>
+                <h1>{score:.2f}%</h1>
+                <p>Low risk of diabetes</p>
+            </div>
+            """, unsafe_allow_html=True)
+            st.success("✅ Maintain a healthy lifestyle.")
+
+        # Probability chart
+        prob_df = pd.DataFrame({
+            "Outcome": ["Negative", "Positive"],
+            "Probability (%)": [probability[0][0]*100, probability[0][1]*100]
+        })
+        st.subheader("Prediction Probability")
+        st.bar_chart(prob_df.set_index("Outcome"))
+
+        # Download report
+        report = pd.DataFrame({
+            "Parameter": ["Age", "BMI", "Insulin", "Glucose", "Result"],
+            "Value": [age, mass, insulin, plasma, prediction]
+        })
+
+        st.download_button(
+            "📥 Download Report",
+            report.to_csv(index=False),
+            "diabetes_report.csv",
+            "text/csv"
+        )
     else:
-        st.markdown(
-            f"<div class='result-negative'><h2>Tested Negative</h2><h3>{probability[0][0]*100:.2f}%</h3></div>",
-            unsafe_allow_html=True
-        )
-        st.success("✅ Low risk")
+        st.info("👈 Enter values and click Analyze Result")
 
-    # -----------------------------------------------------------------------------
-    # CSV REPORT
-    # -----------------------------------------------------------------------------
-    report_df = pd.DataFrame({
-        "Parameter": ["Age", "BMI", "Insulin", "Glucose", "Prediction"],
-        "Value": [age, mass, insulin, plasma, prediction]
-    })
+with col2:
+    st.subheader("Model Performance")
+    st.metric("Accuracy", f"{accuracy:.2%}")
+    st.progress(accuracy)
 
-    st.download_button(
-        "📥 Download CSV Report",
-        report_df.to_csv(index=False),
-        "diabetes_report.csv",
-        "text/csv"
-    )
-
-    # -----------------------------------------------------------------------------
-    # PDF REPORT
-    # -----------------------------------------------------------------------------
-    def generate_pdf():
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
-        styles = getSampleStyleSheet()
-        elements = []
-
-        elements.append(Paragraph("Diabetes Prediction Report", styles['Title']))
-        elements.append(Spacer(1, 12))
-
-        table_data = [
-            ["Parameter", "Value"],
-            ["Age", age],
-            ["BMI", mass],
-            ["Insulin", insulin],
-            ["Glucose", plasma],
-            ["Prediction", prediction],
-            ["Accuracy", f"{accuracy:.2%}"]
-        ]
-
-        table = Table(table_data)
-        elements.append(table)
-
-        doc.build(elements)
-        buffer.seek(0)
-        return buffer
-
-    pdf_file = generate_pdf()
-
-    st.download_button(
-        "📄 Download PDF Report",
-        pdf_file,
-        "diabetes_report.pdf",
-        "application/pdf"
-    )
-
-else:
-    st.info("👈 Enter values and click Predict")
+    st.subheader("Features Used")
+    st.code("['age', 'mass', 'insu', 'plas']")
 
 # -----------------------------------------------------------------------------
-# HISTORY
+# HISTORY TABLE
 # -----------------------------------------------------------------------------
-st.subheader("Prediction History")
+st.subheader("Patient Prediction History")
 if st.session_state.history:
     st.dataframe(pd.DataFrame(st.session_state.history))
 else:
-    st.info("No history yet")
+    st.info("No records yet.")
 
-# -----------------------------------------------------------------------------
-# MODEL INFO
-# -----------------------------------------------------------------------------
-st.subheader("Model Accuracy")
-st.metric("Accuracy", f"{accuracy:.2%}")
