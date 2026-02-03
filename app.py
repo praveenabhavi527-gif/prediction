@@ -99,7 +99,7 @@ with st.sidebar:
     reset_btn = st.button("🔄 Reset")
 
     if reset_btn:
-        st.experimental_rerun()
+        st.rerun()
 
 # -----------------------------------------------------------------------------
 # MAIN UI
