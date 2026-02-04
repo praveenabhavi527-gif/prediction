@@ -1,21 +1,16 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 from datetime import datetime
 
-# -----------------------------------------------------------------------------
-# PAGE CONFIG
-# -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="Diabetes Prediction System",
     page_icon="🩺",
     layout="wide"
 )
 
-# -----------------------------------------------------------------------------
-# BASIC STYLE
-# -----------------------------------------------------------------------------
 st.markdown("""
 <style>
 .stButton>button {
@@ -38,15 +33,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# -----------------------------------------------------------------------------
-# SESSION STATE
-# -----------------------------------------------------------------------------
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# -----------------------------------------------------------------------------
-# LOAD DATA
-# -----------------------------------------------------------------------------
 @st.cache_data
 def load_data():
     url = "https://raw.githubusercontent.com/jbrownlee/Datasets/master/pima-indians-diabetes.data.csv"
@@ -57,9 +46,6 @@ def load_data():
 
 df = load_data()
 
-# -----------------------------------------------------------------------------
-# TRAIN MODEL
-# -----------------------------------------------------------------------------
 @st.cache_resource
 def train_model(data):
     X = data[['age','mass','insu','plas']]
@@ -71,9 +57,6 @@ def train_model(data):
 
 model, accuracy = train_model(df)
 
-# -----------------------------------------------------------------------------
-# SIDEBAR INPUT
-# -----------------------------------------------------------------------------
 with st.sidebar:
     st.title("🩺 Patient Details")
 
@@ -86,9 +69,6 @@ with st.sidebar:
     if st.button("Reset"):
         st.rerun()
 
-# -----------------------------------------------------------------------------
-# MAIN
-# -----------------------------------------------------------------------------
 st.title("Diabetes Prediction System")
 
 if predict_btn:
@@ -121,9 +101,41 @@ if predict_btn:
         )
         st.success("✅ Low risk")
 
-    # -----------------------------------------------------------------------------
-    # CSV REPORT
-    # -----------------------------------------------------------------------------
+    st.subheader("Prediction Probability")
+
+    prob_df = pd.DataFrame({
+        "Outcome": ["Tested Negative", "Tested Positive"],
+        "Probability": [prob[0][0], prob[0][1]]
+    })
+
+    fig, ax = plt.subplots()
+    ax.bar(prob_df["Outcome"], prob_df["Probability"], color=["green", "red"])
+    ax.set_ylim(0, 1)
+    ax.set_ylabel("Probability")
+    st.pyplot(fig)
+
+    st.subheader("Patient vs Dataset Average")
+
+    avg = df[['age','mass','insu','plas']].mean()
+
+    compare_df = pd.DataFrame({
+        "Feature": ["Age", "BMI", "Insulin", "Glucose"],
+        "Patient": [age, bmi, insulin, glucose],
+        "Dataset Avg": avg.values
+    })
+
+    st.bar_chart(compare_df.set_index("Feature"))
+
+    st.subheader("BMI vs Glucose Distribution")
+
+    fig, ax = plt.subplots()
+    ax.scatter(df["mass"], df["plas"], alpha=0.4, label="Dataset")
+    ax.scatter(bmi, glucose, color="red", s=120, label="Patient")
+    ax.set_xlabel("BMI")
+    ax.set_ylabel("Plasma Glucose")
+    ax.legend()
+    st.pyplot(fig)
+
     report_df = pd.DataFrame({
         "Parameter": ["Age","BMI","Insulin","Glucose","Prediction","Accuracy"],
         "Value": [age,bmi,insulin,glucose,prediction,f"{accuracy:.2%}"]
@@ -135,9 +147,6 @@ if predict_btn:
         "diabetes_report.csv"
     )
 
-    # -----------------------------------------------------------------------------
-    # TXT REPORT
-    # -----------------------------------------------------------------------------
     report_txt = f"""
 DIABETES PREDICTION REPORT
 -------------------------
@@ -163,12 +172,16 @@ Note: This is a prediction system, not a medical diagnosis.
 else:
     st.info("Enter patient data and click Predict")
 
-# -----------------------------------------------------------------------------
-# HISTORY
-# -----------------------------------------------------------------------------
 st.subheader("Prediction History")
+
 if st.session_state.history:
-    st.dataframe(pd.DataFrame(st.session_state.history))
+    hist_df = pd.DataFrame(st.session_state.history)
+    hist_df["Result_Code"] = hist_df["Result"].map({
+        "tested_negative": 0,
+        "tested_positive": 1
+    })
+    st.dataframe(hist_df.drop(columns=["Result_Code"]))
+    st.line_chart(hist_df["Result_Code"])
 else:
     st.info("No records yet")
 
